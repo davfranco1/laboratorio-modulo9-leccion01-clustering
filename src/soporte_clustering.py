@@ -318,7 +318,7 @@ class Clustering:
         Returns:
             None
         """
-        model = KMeans()
+        model = KMeans(random_state=42)
         visualizer = KElbowVisualizer(model, k=n_clusters, metric='silhouette')
         visualizer.fit(self.dataframe)
         visualizer.show()
@@ -340,12 +340,12 @@ class Clustering:
         dataframe_original["clusters_kmeans"] = labels.astype(str)
         return dataframe_original, labels
     
-    def visualizar_dendrogramas(self, lista_metodos=["average", "complete", "ward"]):
+    def visualizar_dendrogramas(self, lista_metodos=["average", "complete", "ward", "single"]):
         """
         Genera y visualiza dendrogramas para el conjunto de datos utilizando diferentes métodos de distancias.
 
         Params:
-            - lista_metodos : list of str, optional, default: ["average", "complete", "ward"]. Lista de métodos para calcular las distancias entre los clusters. Cada método generará un dendrograma
+            - lista_metodos : list of str, optional, default: ["average", "complete", "ward", "single"]. Lista de métodos para calcular las distancias entre los clusters. Cada método generará un dendrograma
                 en un subplot diferente.
 
         Returns:
@@ -544,7 +544,101 @@ class Clustering:
 
         plt.tight_layout()
         plt.show() 
-    
+
+    def radar_plot(self, dataframe, variables, columna_cluster):
+
+        # Agrupar por cluster y calcular la media
+        cluster_means = dataframe.groupby(columna_cluster)[variables].mean()
+
+        # Repetir la primera columna al final para cerrar el radar
+        cluster_means = pd.concat([cluster_means, cluster_means.iloc[:, 0:1]], axis=1)
+
+        # Crear los ángulos para el radar plot
+        num_vars = len(variables)
+        angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+        angles += angles[:1]  # Cerrar el gráfico
+
+        # Crear el radar plot
+        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+
+        # Dibujar un gráfico para cada cluster
+        for i, row in cluster_means.iterrows():
+            ax.plot(angles, row, label=f'Cluster {i}')
+            ax.fill(angles, row, alpha=0.25)
+
+        # Configurar etiquetas de los ejes
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(variables)
+
+        # Añadir leyenda y título
+        plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+        plt.title('Radar Plot de los Clusters', size=16)
+        plt.show()
+
+def modelo_aglomerativo_tabla(dataframe, linkage_methods, distance_metrics):
+
+    # Crear un DataFrame para almacenar los resultados
+    results = []
+
+    # Suponiendo que tienes un DataFrame llamado df_copia
+    # Aquí df_copia debería ser tu conjunto de datos
+    # Asegúrate de que esté preprocesado adecuadamente (normalizado si es necesario)
+
+    for linkage_method in linkage_methods:
+        for metric in distance_metrics:
+            for cluster in range(2,6):
+                try:
+                    # Configurar el modelo de AgglomerativeClustering
+                    modelo = AgglomerativeClustering(
+                        linkage=linkage_method,
+                        metric=metric,  
+                        distance_threshold=None,  # Para buscar n_clusters
+                        n_clusters=cluster, # Cambia esto según tu análisis. Si tienen valor, el distance threshold puede ser none, y viceversa.
+                    )
+                    
+                    # Ajustar el modelo
+                    labels = modelo.fit_predict(dataframe) #etiquetas del cluster al que pertenece
+
+                    # Calcular métricas si hay más de un cluster
+                    if len(np.unique(labels)) > 1:
+                        # Silhouette Score
+                        silhouette_avg = silhouette_score(dataframe, labels, metric=metric)
+
+                        # Davies-Bouldin Index
+                        db_score = davies_bouldin_score(dataframe, labels)
+
+                        
+                        # Cardinalidad (tamaño de cada cluster)
+                        cluster_cardinality = {cluster: sum(labels == cluster) for cluster in np.unique(labels)}
+                    else:
+                        cluster_cardinality = {'Cluster único': len(dataframe)}
+
+                    # Almacenar resultados
+                    results.append({
+                        'linkage': linkage_method,
+                        'metric': metric,
+                        'silhouette_score': silhouette_avg,
+                        'davies_bouldin_index': db_score,
+                        'cluster_cardinality': cluster_cardinality,
+                        'n_cluster': cluster
+                    })
+
+                except Exception as e:
+                    print(f"Error con linkage={linkage_method}, metric={metric}: {e}")
+                    # Ward SÓLO acepta medir con distancia euclidiana en scikitlearn.
+
+    # Crear DataFrame de resultados
+    results_df = pd.DataFrame(results)
+
+    # Mostrar resultados ordenados por silhouette_score
+    results_df = results_df.sort_values(by='silhouette_score', ascending=False)
+
+    # Mostrar el DataFrame
+    return results_df
+
+
 class Encoding:
     """
     Clase para realizar diferentes tipos de codificación en un DataFrame.
@@ -773,3 +867,5 @@ def aplicar_escaladores(df, columnas, escaladores, return_scaler=False):
         return df_escalado, primer_escalador
     else:
         return df_escalado
+
+
